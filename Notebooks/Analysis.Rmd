@@ -1,0 +1,118 @@
+---
+title: "R Notebook"
+output: 
+  html_notebook: 
+    code_folding: hide
+---
+
+```{r}
+acc = readRDS(file = "./Data/acc_cancer_no146_primaryonly15k_cancercells.rds")
+```
+
+## UMAP of the data
+```{r}
+DimPlot(acc,group.by = "seurat_clusters")
+```
+Load data
+```{r}
+pathways_scores = fread(file = "./Data/ACC_Canonical_Pathway_Scores.txt",sep = ",") %>% as.matrix(rownames=1) %>% t() %>%  as.data.frame()
+```
+
+Add luminal_over_myo
+```{r}
+gs=acc@assays$RNA@var.features
+myoscore=apply(acc@assays$RNA@scale.data[intersect(c("TP63","TP73","CAV1","CDH3","KRT5","KRT14","ACTA2","TAGLN","MYLK","DKK3"),gs),],2,mean)
+
+lescore=apply(acc@assays$RNA@scale.data[intersect(c("KIT","EHF","ELF5","KRT7","CLDN3","CLDN4","CD24","LGALS3","LCN2","SLPI"),gs),],2,mean)
+
+acc=AddMetaData(acc,lescore-myoscore,"luminal_over_myo")
+```
+
+correlation test
+```{r}
+luminal_over_myo = FetchData(object = acc, vars = "luminal_over_myo")
+```
+
+```{r}
+pathways_scores = pathways_scores [rownames(pathways_scores) %in% rownames(luminal_over_myo),]
+pathways_scores =  pathways_scores[order(row.names(pathways_scores)),]
+```
+
+```{r}
+cor_res = cor(x = luminal_over_myo, y = pathways_scores)
+```
+
+```{r}
+pathways_cor = data.frame(cor = cor_res) %>% t() %>% as.data.frame()
+pathways_cor <- pathways_cor %>% arrange(desc(luminal_over_myo))
+```
+
+## Top correlated pathways with luminal_over_myo
+```{r}
+pathways_cor %>% head
+```
+```{r}
+pathways_cor <- pathways_cor %>% arrange(luminal_over_myo)
+pathways_cor %>% head(10)
+```
+
+
+```{r}
+acc=AddMetaData(acc,pathways_scores[,"REACTOME_LAMININ_INTERACTIONS"],"REACTOME_LAMININ_INTERACTIONS")
+```
+
+## Example of best pathway
+```{r}
+FeaturePlot(object = acc,features = "REACTOME_LAMININ_INTERACTIONS")
+```
+## UMAP and clustring by pathways scores
+```{r}
+#Remove NA
+pathways_scores[340] <- NULL
+```
+
+```{r warning=FALSE}
+pathway_scores_assay <- CreateAssayObject(counts = pathways_scores %>% t())
+```
+```{r warning=FALSE}
+acc[["pathway_scores"]] = pathway_scores_assay
+```
+```{r warning=FALSE, results='hide'}
+acc <- FindVariableFeatures(acc, selection.method = "vst", nfeatures = 1000,assay = "pathway_scores")
+acc <- ScaleData(acc,assay = "pathway_scores",features = rownames(acc[["pathway_scores"]]))
+acc <- RunPCA(acc, features = rownames(acc[["pathway_scores"]]),assay = "pathway_scores")
+```
+```{r}
+DimHeatmap(acc, dims = 1:5, cells = 500, balanced = TRUE)
+
+```
+
+### Elbow plot
+<button class="btn btn-primary" data-toggle="collapse" data-target="#BlockName"> Show/Hide </button>  
+<div id="BlockName" class="collapse">  
+```{r}
+ElbowPlot(acc)
+```
+</div>
+```{r results='hide'}
+acc <- FindNeighbors(acc, dims = 1:5)
+acc <- FindClusters(acc, resolution = 0.8,graph.name = "pathway_scores_snn",assay = "pathway_scores")
+acc <- RunUMAP(acc, dims = 1:5,assay = "pathway_scores")
+```
+
+
+### UMAP
+```{r}
+DimPlot(acc, reduction = "umap")
+```
+### UMAP Luminal over Myo
+```{r}
+FeaturePlot(object = acc,features = "luminal_over_myo")
+```
+
+
+### UMAP by patient
+```{r}
+DimPlot(acc, reduction = "umap",group.by = "patient.ident")
+```
+
