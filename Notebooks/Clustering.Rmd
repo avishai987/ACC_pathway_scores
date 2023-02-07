@@ -29,6 +29,35 @@ pathways_scores = fread(file = "./Data/ACC_Hallmark_Pathway_Scores.txt",sep = ",
 luminal_scores = fread(file = "./Data/ACC_BREAST_CANCER_MIX_Pathway_Scores.txt",sep = ",") %>% as.matrix(rownames=1) %>% t() %>%  as.data.frame()
 
 ```
+```{r}
+#set lum_or_myo metadata
+luminal_over_myo = FetchData(object = acc,vars = "luminal_over_myo")
+luminal_over_myo$lum_or_myo  = case_when(luminal_over_myo$luminal_over_myo >1~"lum",luminal_over_myo$luminal_over_myo <(-1)~"myo",TRUE~"NA")
+luminal_over_myo$luminal_over_myo <-NULL
+acc=AddMetaData(object = acc,metadata = luminal_over_myo,col.name = "lum_or_myo")
+```
+
+
+```{r}
+acc_noNA = subset(x = acc,subset = (lum_or_myo != "NA"))
+```
+
+
+## Results {.tabset}
+```{r results='asis',echo=TRUE}
+for (i in 1:8) {
+  cat("### PC",i," \n")
+  print(DimPlot(object = acc_noNA,reduction = "pca",group.by = "lum_or_myo",dims = c(i,i),pt.size = 0.5))
+  cat(' \n\n')
+  plot.new()
+}
+  cat('## {-}') 
+
+```
+## PC1 top pathways
+```{r fig.height=10, fig.width=10}
+VizDimLoadings(acc, dims = 1, reduction = "pca")
+```
 
 ```{r}
 pathways_scores = cbind(pathways_scores,luminal_scores)

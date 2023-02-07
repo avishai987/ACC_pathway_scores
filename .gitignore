@@ -1,4 +1,4 @@
-.Rproj
+ACC_pathway_scores.Rproj
 .rds
 .Rproj.user
 .Rhistory
@@ -7,3 +7,5 @@
 .Rdata
 .httr-oauth
 .DS_Store
+Data/
+.Rprofile
