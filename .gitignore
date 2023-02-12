@@ -9,3 +9,4 @@ ACC_pathway_scores.Rproj
 .DS_Store
 Data/
 .Rprofile
+.Renviron
