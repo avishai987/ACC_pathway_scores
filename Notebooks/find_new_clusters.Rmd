@@ -1,0 +1,212 @@
+---
+title: '`r rstudioapi::getSourceEditorContext()$path %>% basename() %>% gsub(pattern = "\\.Rmd",replacement = "")`' 
+author: "Avishai Wizel"
+date: '`r Sys.Date()`'
+output: 
+  html_notebook: 
+    code_folding: hide
+    toc: yes
+    toc_collapse: yes
+    toc_float: 
+      collapsed: FALSE
+---
+
+## Parameters
+
+```{r warning=FALSE}
+suffix = ""
+data_to_read = "./Data/acc_tpm_nCount_mito_no146_15k_cancercells.rds"
+```
+
+
+## functions
+
+```{r warning=FALSE}
+```
+
+## Data
+
+```{r}
+acc = readRDS(file = data_to_read)
+(message("reading '" %>% paste0(data_to_read %>% basename()) %>% paste0("'")))
+pathways_scores = fread(file = "./Data/ACC_Canonical_Pathway_Scores.txt",sep = ",") %>% as.matrix(rownames=1) %>% t() %>%  as.data.frame()
+hallmark_scores = fread(file = "./Data/ACC_Hallmark_Pathway_Scores.txt",sep = ",") %>% as.matrix(rownames=1) %>% t() %>%  as.data.frame()
+```
+
+```{r}
+ln_list = c("ACC22.LN.P11", "ACC22.P12.LN","ACC7.P13")
+ln_plates = FetchData(object = acc,vars = "orig.ident") %>% mutate(
+  tumor_type = if_else(condition = orig.ident %in% ln_list
+                       ,true = "LN"
+                       ,false = "primary"))
+
+ln_plates["orig.ident"] <-NULL
+acc= AddMetaData(object = acc,metadata = ln_plates)
+```
+
+
+```{r}
+pathways_scores = cbind(pathways_scores,hallmark_scores)
+pathways_scores = pathways_scores[ , colSums(is.na(pathways_scores))==0] #remove cols with NA
+pathways_scores = pathways_scores [rownames(pathways_scores) %in% colnames(acc),] #remove cells not in dataset
+pathways_scores =  pathways_scores[order(row.names(pathways_scores)),] #order cells like dataset
+```
+
+```{r warning=FALSE, results='hide',echo=TRUE}
+# run-dim-reduction on genes:
+acc <- FindVariableFeatures(acc, selection.method = "vst", nfeatures = 2000)
+acc <- ScaleData(acc)
+acc <- RunPCA(acc)
+ElbowPlot(acc)
+```
+
+
+```{r}
+acc <- RunUMAP(acc, dims = 1:5)
+```
+
+
+
+```{r}
+pathway_scores_assay <- CreateAssayObject(counts = pathways_scores %>% t()) #create an assay
+acc[["pathway_scores"]] = pathway_scores_assay
+```
+```{r warning=FALSE, results='hide',echo=TRUE}
+# run-dim-reduction:
+acc <- FindVariableFeatures(acc, selection.method = "vst", nfeatures = 2000,assay = "pathway_scores")
+acc <- ScaleData(acc,assay = "pathway_scores",features = rownames(acc[["pathway_scores"]]))
+acc <- RunPCA(acc, features = rownames(acc[["pathway_scores"]]),assay = "pathway_scores",reduction.name = "PCA_pathway_scores")
+ElbowPlot(acc,reduction =  "PCA_pathway_scores")
+```
+
+
+```{r}
+acc <- RunUMAP(acc, dims = 1:5,reduction ="PCA_pathway_scores",reduction.name = "pathway_scores_umap")
+```
+## acc umaps {.tabset}
+
+### gene expression
+
+
+```{r}
+DimPlot(acc,group.by = "patient.ident")
+```
+### pathways scores
+
+```{r}
+DimPlot(acc,reduction = "pathway_scores_umap",group.by = "patient.ident")
+```
+## UMAP by tumor type {.tabset}
+
+### genes
+```{r}
+DimPlot(acc,reduction = "umap",group.by = "tumor_type")
+
+```
+
+### pathwyas
+
+```{r}
+DimPlot(acc,reduction = "pathway_scores_umap",group.by = "tumor_type")
+```
+
+## All PC's {.tabset}
+
+```{r echo=TRUE, fig.height=8, fig.width=14, results='asis'}
+for (i in 1:8) {
+  cat("### PC",i," \n")
+  print(VizDimLoadings(acc, dims = i, reduction = "PCA_pathway_scores"))
+  cat(' \n\n')
+  plot.new()
+  dev.off()
+}
+```
+
+
+## cycling cells clustring {.tabset}
+```{r warning=FALSE}
+hallmark_name = "HALLMARK_G2M_CHECKPOINT"
+genesets  =GSEABase::getGmt("./Data/h.all.v7.0.symbols.pluscc.gmt")
+var_features=acc@assays$RNA@var.features
+geneIds= genesets[[hallmark_name]]@geneIds
+score <- apply(acc@assays$RNA@data[intersect(geneIds,var_features),],2,mean)
+acc=AddMetaData(acc,score,hallmark_name)
+```
+
+
+### genes
+```{r}
+FeaturePlot(acc, reduction = "umap",features = "HALLMARK_G2M_CHECKPOINT")
+```
+
+### pathwyas
+
+```{r}
+FeaturePlot(acc, reduction = "pathway_scores_umap",features = "HALLMARK_G2M_CHECKPOINT")
+```
+## UMAP clusters
+```{r}
+acc <- FindNeighbors(acc, dims = 1:10,reduction = "PCA_pathway_scores")
+acc <- FindClusters(acc, resolution = 0.1,graph.name = "pathway_scores_snn")
+```
+
+```{r}
+DimPlot(acc,reduction = "pathway_scores_umap")
+```
+## DEG
+```{r}
+markers = FindMarkers(object = acc,ident.1 = "0",ident.2 = "1",assay = "pathway_scores",min.cells.feature = 10,logfc.threshold = 0)
+```
+<div style='width:1300px;margin: 0 auto;'>
+
+```{r echo=TRUE}
+markers
+```
+</div>
+
+## Top 10 pathways {.tabset}
+
+
+```{r echo=TRUE, results='asis'}
+DefaultAssay(acc )= "pathway_scores"
+for (i in 1:10) {
+  pathway = rownames(markers)[i]
+  cat("### ",i," \n")
+  print(
+    FeaturePlot(object = acc,features = pathway,reduction = "pathway_scores_umap")
+    )
+  plot.new()
+  dev.off()
+  cat(' \n\n')
+}
+```
+
+## HEAD-AND-NECK-SQUAMOUS
+```{r warning=FALSE}
+FeaturePlot(object = acc,features = "WP-HEAD-AND-NECK-SQUAMOUS-CELL-CARCINOMA",reduction = "pathway_scores_umap")
+```
+
+
+
+
+```{r}
+gs=acc@assays$RNA@var.features
+
+myoscore=apply(acc@assays$RNA@scale.data[intersect(c("TP63","TP73","CAV1","CDH3","KRT5","KRT14","ACTA2","TAGLN","MYLK","DKK3"),gs),],2,mean)
+
+lescore=apply(acc@assays$RNA@scale.data[intersect(c("KIT","EHF","ELF5","KRT7","CLDN3","CLDN4","CD24","LGALS3","LCN2","SLPI"),gs),],2,mean)
+acc=AddMetaData(acc,lescore-myoscore,"luminal_over_myo")
+```
+
+```{r}
+#set lum_or_myo metadata
+luminal_over_myo = FetchData(object = acc,vars = "luminal_over_myo")
+luminal_over_myo$lum_or_myo  = case_when(luminal_over_myo$luminal_over_myo >1~"lum",luminal_over_myo$luminal_over_myo <(-1)~"myo",TRUE~"NA")
+luminal_over_myo$luminal_over_myo <-NULL
+acc=AddMetaData(object = acc,metadata = luminal_over_myo,col.name = "lum_or_myo")
+```
+
+```{r warning=FALSE}
+FeaturePlot(object = acc,features = "luminal_over_myo",reduction = "pathway_scores_umap")
+DimPlot(acc,group.by = "lum_or_myo",cols = c("red","green","grey"))
+```
