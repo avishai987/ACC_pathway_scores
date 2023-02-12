@@ -23,9 +23,9 @@ data_to_read = "./Data/acc_cancer_no146_primaryonly15k_cancercells.rds"
 
 ```{r warning=FALSE}
 ```
+
 ```{r}
-file_path ="/sci/labs/yotamd/lab_share/avishai.wizel/R_projects/ACC_pathway_scores/Notebooks/Clustering_HallmarksAndLum.html"
-pandoc_convert(file_path, to = "markdown_strict",output = "test.md")
+
 ```
 
 ## Data
@@ -55,7 +55,7 @@ acc_noNA = subset(x = acc,subset = (lum_or_myo != "NA"))
 ```{r results='asis',echo=TRUE}
 for (i in 1:8) {
   cat("### PC",i," \n")
-  print(DimPlot(object = acc_noNA,reduction = "pca",group.by = "lum_or_myo",dims = c(i,i),pt.size = 0.5))
+  print(DimPlot(object = acc_noNA,reduction = "pca",group.by = "lum_or_myo",dims = c(i,9),pt.size = 0.5))
   cat(' \n\n')
   plot.new()
 }
@@ -63,7 +63,7 @@ for (i in 1:8) {
 ```
 
 ## PC1 top pathways
-```{r fig.height=10, fig.width=10}
+```{r}
 VizDimLoadings(acc, dims = 1, reduction = "pca")
 ```
 # PCA with pathway scores
